@@ -64,66 +64,71 @@ def git_find_all_branches():
     branches = []
   return branches
 
-def get_addon_manifest(branch_list=[]):
+def get_addon_manifest(branch_list, do_common=False, do_diff=False):
   ''' Generates an addon manifest 
       across all branches. '''
-  
+ 
   global addons_info
-  branch_list = ['rob', 'jeni']
   addon_sets = {}
+  branch_addons = {} 
+  branch_count = len(branch_list)
+  
+  # if empty branch list, index everything
+  branches = branch_list if branch_count > 0 else git_find_all_branches()
 
-  for branch in branch_list:
+  for branch in branches:
     # Switch to the current branch
     git_checkout(branch)
 
     # Generate a list of addons
-    working_addon_list = sorted(os.listdir(addons_info['addons_directory']))
+    branch_addons[branch] = sorted( os.listdir( addons_info['addons_directory'] ) )
     
+    # TODO: move this functionality out of here
+    # since we're storing addons by branch in a dict.
     # create a set with the addon_list and store
-    addon_sets[branch] = set(working_addon_list)
+    addon_sets[branch] = set(branch_addons[branch])
 
-  # Print addons unique to each branch
-  #for k, v in addon_sets.iteritems():
-    # If just one branch passed in
-    # there's no comparison to do.
-    # Just print the contents.
-    #if len(branch_list) == 1:
-      #for addon in v:
-        #print addon
-      #print '\n'
-    #else:
-      #pass
-
-  print '%s\n' % ('=' * 20)
-  print 'Complete Addons list:\n'
-  print '%s\n' % ('=' * 20)
-  for addon in addon_sets['jeni'].union(addon_sets['rob']):
-    print '\t%s' % addon
-  print '\n'
-
-  #print '[%s]: Unique Addons'
-  #for unique_addon in (addon_sets['jeni'] - addon_sets['rob']):
-    #print '[%s]: Unique Addons'
-
-  print '%s\n' % ('=' * 20)
-  print 'Common Addons between branches: [%s] and [%s]: \n' % ('jeni', 'rob')
-  print '%s\n' % ('=' * 20)
-  for common_addon in addon_sets['jeni'].intersection(addon_sets['rob']):
-    print '\t%s' % common_addon
-  print '\n'
-
-  print '%s\n' % ('=' * 20)
-  print 'Unique Addons between branches: [%s] and [%s]: \n' % ('jeni', 'rob')
-  print '%s\n' % ('=' * 20)
-  print '\n\tjeni:\n'
-  for unique_addon in addon_sets['jeni'].difference(addon_sets['rob']):
-    print '\t\t%s' % unique_addon
-  print '\n'
+  # Print Complete index of addons across all branches.
+  if branch_count == 0:
+    print format_section('Complete Addons list')
+    for branch in branch_addons.keys():
+      print '\n\t%s:\n' % branch
+      for addon in branch_addons[branch]:
+        print '\t\t%s' % addon
+      print '\n'
+    # Since we can only perform set logic when two
+    # branches are present, we're done.
+    return
   
-  print '\n\trob:\n'
-  for unique_addon in addon_sets['rob'].difference(addon_sets['rob']):
-    print '\t\t%s' % unique_addon
-  print '\n'
+  if branch_count != 2:
+    print 'Exactly two branches are required for diff/common operations.'
+    return
+
+  if do_common:
+    print format_section( 'Common Addons between branches: [%s] and [%s]' % ( branch_list[0], branch_list[1] ) )
+    
+    for common_addon in addon_sets[ branch_list[0] ].intersection( addon_sets[ branch_list[1] ] ):
+      print '\t%s' % common_addon
+    print '\n'
+
+  if do_diff:
+    print format_section('Unique Addons between branches: [%s] and [%s]' % ('jeni', 'rob'))
+    
+    print '\n\t%s:\n' % branch_list[0]
+    for unique_addon in addon_sets[ branch_list[0] ].difference( addon_sets[ branch_list[1] ] ):
+      print '\t\t%s' % unique_addon
+    print '\n'
+  
+    print '\n\t%s:\n' % branch_list[1]
+    for unique_addon in addon_sets[ branch_list[1] ].difference( addon_sets[ branch_list[0] ] ):
+      print '\t\t%s' % unique_addon
+    print '\n'
+
+
+def format_section(header):
+  DIV = '\n%s\n' % ( '=' * (len(header) * 2) )
+  format_header = '\n\t%s\n' % (header) 
+  return '%s%s%s' % (DIV, format_header, DIV) 
 
 
 def main(opts, args):
@@ -164,8 +169,8 @@ def main(opts, args):
   # If 'all', determine which branches are present and use them instead.
   addons_branches = addons_info['branch'] if addons_info['branch'] != ['all'] else git_find_all_branches()
   
-  if opts.list_addons:
-    get_addon_manifest()
+  if opts.list_addons or opts.list_common or opts.list_diff:
+    get_addon_manifest(opts.branch, do_common=opts.list_common, do_diff=opts.list_diff)
     sys.exit()
 
   # Process each branch.  
@@ -317,7 +322,20 @@ if __name__ == '__main__':
                         action='store_true', 
                         default=False, 
                         dest='list_addons', 
-                        help='List addons in branch.')
+                        help='List addons for the branch or branches specified. (**NOTE: If no branch is specified, \
+                              a complete index across all branches will be generated.')
+                        
+    _parser.add_option('--diff-addons',
+                        action='store_true', 
+                        default=False, 
+                        dest='list_diff', 
+                        help='Diff addons between branches. (**NOTE: Must be used with two --branch args)')
+                        
+    _parser.add_option('--common-addons',
+                        action='store_true', 
+                        default=False, 
+                        dest='list_common', 
+                        help='List Common addons between branches. (**NOTE: Must be used with two --branch args)')
                         
     _parser.add_option('--clean-up',
                         '-c',

@@ -6,6 +6,8 @@ import os
 import shutil
 from optparse import OptionParser
 
+addons_info = {}
+
 def initConfig(config):
   ''' Initialize the config object pointed to $config's path.'''
   c = ConfigParser.ConfigParser()
@@ -61,7 +63,69 @@ def git_find_all_branches():
   except:
     branches = []
   return branches
+
+def get_addon_manifest(branch_list=[]):
+  ''' Generates an addon manifest 
+      across all branches. '''
   
+  global addons_info
+  branch_list = ['rob', 'jeni']
+  addon_sets = {}
+
+  for branch in branch_list:
+    # Switch to the current branch
+    git_checkout(branch)
+
+    # Generate a list of addons
+    working_addon_list = sorted(os.listdir(addons_info['addons_directory']))
+    
+    # create a set with the addon_list and store
+    addon_sets[branch] = set(working_addon_list)
+
+  # Print addons unique to each branch
+  #for k, v in addon_sets.iteritems():
+    # If just one branch passed in
+    # there's no comparison to do.
+    # Just print the contents.
+    #if len(branch_list) == 1:
+      #for addon in v:
+        #print addon
+      #print '\n'
+    #else:
+      #pass
+
+  print '%s\n' % ('=' * 20)
+  print 'Complete Addons list:\n'
+  print '%s\n' % ('=' * 20)
+  for addon in addon_sets['jeni'].union(addon_sets['rob']):
+    print '\t%s' % addon
+  print '\n'
+
+  #print '[%s]: Unique Addons'
+  #for unique_addon in (addon_sets['jeni'] - addon_sets['rob']):
+    #print '[%s]: Unique Addons'
+
+  print '%s\n' % ('=' * 20)
+  print 'Common Addons between branches: [%s] and [%s]: \n' % ('jeni', 'rob')
+  print '%s\n' % ('=' * 20)
+  for common_addon in addon_sets['jeni'].intersection(addon_sets['rob']):
+    print '\t%s' % common_addon
+  print '\n'
+
+  print '%s\n' % ('=' * 20)
+  print 'Unique Addons between branches: [%s] and [%s]: \n' % ('jeni', 'rob')
+  print '%s\n' % ('=' * 20)
+  print '\n\tjeni:\n'
+  for unique_addon in addon_sets['jeni'].difference(addon_sets['rob']):
+    print '\t\t%s' % unique_addon
+  print '\n'
+  
+  print '\n\trob:\n'
+  for unique_addon in addon_sets['rob'].difference(addon_sets['rob']):
+    print '\t\t%s' % unique_addon
+  print '\n'
+
+
 def main(opts, args):
   
   # Make sure config exists
@@ -71,11 +135,13 @@ def main(opts, args):
   
   config.read(config.cfg_path)
   
-  addons_info = { 'branch': opts.branch if len(opts.branch) > 0 else ['master'],
-                  'addons_to_delete': opts.delete,
+  global addons_info
+
+  addons_info = { 'branch':            opts.branch if len(opts.branch) > 0 else ['master'],
+                  'addons_to_delete':  opts.delete,
                   'updates_directory': opts.updates_directory if opts.updates_directory is not None else config.get('local', 'AddonsUpdatesDirectory'),
-                  'addons_directory': opts.addons_directory if opts.addons_directory is not None else config.get('local', 'AddonsDirectory'),
-                  'mirror': config.get('local', 'RepoMirror')}
+                  'addons_directory':  opts.addons_directory if opts.addons_directory is not None else config.get('local', 'AddonsDirectory'),
+                  'mirror':            config.get('local', 'RepoMirror') }
   
   # Make sure required directories exist
   assert os.path.exists(addons_info['updates_directory'])
@@ -98,14 +164,18 @@ def main(opts, args):
   # If 'all', determine which branches are present and use them instead.
   addons_branches = addons_info['branch'] if addons_info['branch'] != ['all'] else git_find_all_branches()
   
+  if opts.list_addons:
+    get_addon_manifest()
+    sys.exit()
+
   # Process each branch.  
   for branch in addons_branches:
     git_checkout(branch)
     
     # List addons for each branch requested, then exit.
-    if opts.list_addons:
-      print '\n(%s)\tThe following addons are present:\n %s\n' % (branch, '\n'.join(sorted(os.listdir(addons_info['addons_directory']))))
-      continue
+    #if opts.list_addons:
+      #print '\n(%s)\tThe following addons are present:\n %s\n' % (branch, '\n'.join(sorted(os.listdir(addons_info['addons_directory']))))
+      #continue
   
     # If we have updated addons, process them.
     if HAS_UPDATES:

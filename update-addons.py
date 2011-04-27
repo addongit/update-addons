@@ -159,7 +159,7 @@ def main(opts, args):
   
   # Determine if we have updated addons to process.
   addon_updates = os.listdir(addons_info['updates_directory'])
-  HAS_UPDATES = True if len(addon_updates) > 0 else False
+  HAS_UPDATES = opts.update #True if len(addon_updates) > 0 else False
   
   # Determine if we need to delete specific addons.
   addons_delete = addons_info['addons_to_delete']
@@ -177,11 +177,16 @@ def main(opts, args):
   for branch in addons_branches:
     git_checkout(branch)
     
-    # List addons for each branch requested, then exit.
-    #if opts.list_addons:
-      #print '\n(%s)\tThe following addons are present:\n %s\n' % (branch, '\n'.join(sorted(os.listdir(addons_info['addons_directory']))))
-      #continue
-  
+    # Check for specific addons to delete and process them.
+    if HAS_DELETIONS:
+      for addon in addons_delete:
+        if os.path.exists(os.path.join(addons_info['addons_directory'], addon)):
+          if 'y' in raw_input('(%s)\tDelete << %s >> ?\n(Y or N): ' % (branch, addon)).lower():
+            git_remove(addon)
+            git_commit('Removed %s.' % addon)
+        else:
+          print '(%s)\t%s NOT found, skipping.' % (branch, addon)
+
     # If we have updated addons, process them.
     if HAS_UPDATES:
       if opts.verbose: print '(%s)\tUsing the following addons:\n%s' % (branch, '\n'.join(addon_updates))
@@ -195,6 +200,7 @@ def main(opts, args):
       # Copy the update into place.
       # Add files
       # Commit
+
       for addon in addon_updates:
         print '(%s)\tProcessing %s' % (branch, addon)
         if os.path.exists(os.path.join(addons_info['addons_directory'], addon)):
@@ -208,17 +214,6 @@ def main(opts, args):
         git_add()
         git_commit('Updated %s' % addon)
         
-    # Check for specific addons to delete and process them.
-    if HAS_DELETIONS:
-      if opts.verbose: print '(%s)\tDeleting:\n %s' % (branch, '\n'.join(addons_info['addons_to_delete']))
-      for addon in addons_delete:
-        if os.path.exists(os.path.join(addons_info['addons_directory'], addon)):
-          if 'y' in raw_input('(%s)\tDelete << %s >> ?\n(Y or N): ' % (branch, addon)).lower():
-            git_remove(addon)
-            git_commit('Removed %s.' % addon)
-        else:
-          print '(%s)\t%s NOT found, skipping.' % (branch, addon)
-    
     # Should we push commits to origin
     if opts.push: 
       if opts.verbose: print '(%s)\tPushing' % branch
@@ -269,7 +264,14 @@ if __name__ == '__main__':
                         default=False, 
                         dest='verbose', 
                         help='Verbose.')
-                        
+    
+    _parser.add_option('--update',
+                        '-u',
+                        action='store_true', 
+                        default=False, 
+                        dest='update', 
+                        help='Process addon updates.')
+                                            
     _parser.add_option('--push',
                         '-p',
                         action='store_true', 
@@ -277,18 +279,6 @@ if __name__ == '__main__':
                         dest='push', 
                         help='Push branch to origin.')
                           
-    #_parser.add_option('--add',
-    #                   action='store_true', 
-    #                   default=False,
-    #                   dest='add',
-    #                   help='Add addon.')
-                       
-    #_parser.add_option('--update',
-    #                   action='store_true', 
-    #                   default=False,
-    #                   dest='update',
-    #                   help='Update addon.')
-                     
     _parser.add_option('--addons-updates-folder',
                        action='store', 
                        type='string',

@@ -146,7 +146,9 @@ def main(opts, args):
                   'addons_to_delete':  opts.delete,
                   'updates_directory': opts.updates_directory if opts.updates_directory is not None else config.get('local', 'AddonsUpdatesDirectory'),
                   'addons_directory':  opts.addons_directory if opts.addons_directory is not None else config.get('local', 'AddonsDirectory'),
-                  'mirror':            config.get('local', 'RepoMirror') }
+                  'mirror':            config.get('local', 'RepoMirror'),
+                  'exclusions':        [] if not config.get('local', 'exclusions') else config.get('local', 'exclusions').split(',')  
+                }
   
   # Make sure required directories exist
   assert os.path.exists(addons_info['updates_directory'])
@@ -158,7 +160,7 @@ def main(opts, args):
   if opts.verbose: print 'Branches: (%s)' % ' | '.join(addons_info['branch'])
   
   # Determine if we have updated addons to process.
-  addon_updates = os.listdir(addons_info['updates_directory'])
+  #addon_updates = os.listdir(addons_info['updates_directory'])
   HAS_UPDATES = opts.update #True if len(addon_updates) > 0 else False
   
   # Determine if we need to delete specific addons.
@@ -177,6 +179,21 @@ def main(opts, args):
   for branch in addons_branches:
     git_checkout(branch)
     
+    # branch specific addon updates directory.
+    addon_depot_branch = os.path.join( addons_info['updates_directory'], branch )
+    
+    # Verify that directory exists
+    assert os.path.exists(addon_depot_branch)
+    
+    print '(%s)\tUsing %s as base.' % (branch, addon_depot_branch)
+   
+    addon_updates = os.listdir(addon_depot_branch)
+
+    # if the addons present in the updates folder
+    # matches the entries in the exclusions we define exactly,
+    # we can safely ignore the directory contents and declare an empty list
+    if not set(addon_updates).difference( set( addons_info['exclusions'] ) ): addon_updates = []
+
     # Check for specific addons to delete and process them.
     if HAS_DELETIONS:
       for addon in addons_delete:
@@ -189,7 +206,7 @@ def main(opts, args):
 
     # If we have updated addons, process them.
     if HAS_UPDATES:
-      if opts.verbose: print '(%s)\tUsing the following addons:\n%s' % (branch, '\n'.join(addon_updates))
+      if opts.verbose: print '(%s)\tUsing the following addons:\n%s' % (branch, '\n'.join(addon_depot_branch))
       
       # TODO: Add actual transaction logic supporting rollback functionality.
       
@@ -202,15 +219,21 @@ def main(opts, args):
       # Commit
 
       for addon in addon_updates:
+        if addon in addons_info['exclusions']: continue
+
         print '(%s)\tProcessing %s' % (branch, addon)
+        
         if os.path.exists(os.path.join(addons_info['addons_directory'], addon)):
           if opts.verbose: print '(%s)\tRemoving %s for update' % (branch, addon)
           git_remove(addon)
           git_commit('removed %s for update' % addon)
-        updated_addon_src_path = os.path.join(addons_info['updates_directory'], addon)
+        
+        updated_addon_src_path = os.path.join( addon_depot_branch, addon )
         updated_addon_dst_path = os.path.join(addons_info['addons_directory'], addon)
+        
         if opts.verbose: print '(%s)\tCopying %s to %s' % (branch, updated_addon_src_path, updated_addon_dst_path)
         shutil.copytree(updated_addon_src_path, updated_addon_dst_path)
+        
         git_add()
         git_commit('Updated %s' % addon)
         
@@ -228,10 +251,14 @@ def main(opts, args):
     
   # Clean up if required.
   if opts.clean_up and HAS_UPDATES:
-    print 'Removing (%d) addon folder(s) from %s\n' % (len(addon_updates), (addons_info['updates_directory']))
+    print 'Removing (%d) addon folder(s) from %s\n' % (len(addon_updates), addon_depot_branch)
     for addon in addon_updates:
-      updated_addon_src_path = os.path.join(addons_info['updates_directory'], addon)
+      if addon in addons_info['exclusions']: continue
+
+      updated_addon_src_path = os.path.join(addon_depot_branch, addon)
+      
       if opts.verbose: print 'Deleting %s' % updated_addon_src_path
+      
       shutil.rmtree(updated_addon_src_path)
   
 if __name__ == '__main__':

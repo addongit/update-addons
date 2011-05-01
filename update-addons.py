@@ -6,8 +6,12 @@ import os
 import shutil
 from optparse import OptionParser
 
+global addons_info
+
 addons_info = {}
 
+# Config functions
+#=========================================================================================
 def initConfig(config):
   ''' Initialize the config object pointed to $config's path.'''
   c = ConfigParser.ConfigParser()
@@ -16,31 +20,38 @@ def initConfig(config):
   c.cfg_path = os.path.join(c.cwd, config)
   return c
 
+# GIT functionality
+#=========================================================================================
 def git_remove(addon):
   '''Remove $addon from the repository.'''
   os.system('git rm -r %s' % addon)
   return True
   
+#=========================================================================================
 def git_add():
   ''' Run git add to record changes.'''
   os.system('git add .')
   return True
   
+#=========================================================================================
 def git_commit(msg):
   ''' Commit changes recording $msg.'''
   os.system("git commit -a -s -m '%s'" % msg)
   return True
   
+#=========================================================================================
 def git_push():
   ''' Push changes to the branches origin.'''
   os.system('git push')
   return True
   
+#=========================================================================================
 def git_checkout(branch):
   ''' Checkout $branch.'''
   os.system('git checkout %s' % branch)
   return True
   
+#=========================================================================================
 def sync_mirror(repo):
   ''' Syncs $repo against origin repo.
       In my case, $repo is a local mirror.'''
@@ -50,6 +61,7 @@ def sync_mirror(repo):
   os.chdir(cur_dir)
   return True
   
+#=========================================================================================
 def git_find_all_branches():
   ''' Find all branches
       Strip current branch identifier (*)
@@ -64,6 +76,8 @@ def git_find_all_branches():
     branches = []
   return branches
 
+# Addon listing
+#=========================================================================================
 def get_addon_manifest(branch_list, do_common=False, do_diff=False):
   ''' Generates an addon manifest 
       across all branches. '''
@@ -89,6 +103,7 @@ def get_addon_manifest(branch_list, do_common=False, do_diff=False):
     addon_sets[branch] = set(branch_addons[branch])
 
   # Print Complete index of addons across all branches.
+  #=========================================================================================
   if branch_count == 0:
     print format_section('Complete Addons list')
     for branch in branch_addons.keys():
@@ -104,6 +119,9 @@ def get_addon_manifest(branch_list, do_common=False, do_diff=False):
     print 'Exactly two branches are required for diff/common operations.'
     return
 
+  # List common addons between branches
+  #=========================================================================================
+  # TODO: Clean up (it's horrible)
   if do_common:
     print format_section( 'Common Addons between branches: [%s] and [%s]' % ( branch_list[0], branch_list[1] ) )
     
@@ -111,6 +129,10 @@ def get_addon_manifest(branch_list, do_common=False, do_diff=False):
       print '\t%s' % common_addon
     print '\n'
 
+
+  # List a diff of addons between branches
+  #=========================================================================================
+  # TODO: Clean up (it's horrible too)
   if do_diff:
     print format_section('Unique Addons between branches: [%s] and [%s]' % ('jeni', 'rob'))
     
@@ -124,13 +146,16 @@ def get_addon_manifest(branch_list, do_common=False, do_diff=False):
       print '\t\t%s' % unique_addon
     print '\n'
 
-
+# Print headers for --list commands
+#=========================================================================================
+# TODO: Clean up.
 def format_section(header):
   DIV = '\n%s\n' % ( '=' * (len(header) * 2) )
   format_header = '\n\t%s\n' % (header) 
   return '%s%s%s' % (DIV, format_header, DIV) 
 
-
+# Main
+#=========================================================================================
 def main(opts, args):
   
   # Make sure config exists
@@ -142,7 +167,9 @@ def main(opts, args):
   
   global addons_info
 
-  addons_info = { 'branch':            opts.branch if len(opts.branch) > 0 else ['master'],
+  # Primary data structure
+  #=========================================================================================
+  addons_info = { 'branch':            opts.branch if len(opts.branch) > 0 else ['all'],
                   'addons_to_delete':  opts.delete,
                   'updates_directory': opts.updates_directory if opts.updates_directory is not None else config.get('local', 'AddonsUpdatesDirectory'),
                   'addons_directory':  opts.addons_directory if opts.addons_directory is not None else config.get('local', 'AddonsDirectory'),
@@ -161,40 +188,41 @@ def main(opts, args):
   
   # Determine if we have updated addons to process.
   #addon_updates = os.listdir(addons_info['updates_directory'])
+  #=========================================================================================
   HAS_UPDATES = opts.update #True if len(addon_updates) > 0 else False
   
   # Determine if we need to delete specific addons.
+  #=========================================================================================
   addons_delete = addons_info['addons_to_delete']
   HAS_DELETIONS = True if len(addons_info['addons_to_delete']) > 0 else False
   
   # Use what was passed in for branch name
   # If 'all', determine which branches are present and use them instead.
+  #=========================================================================================
   addons_branches = addons_info['branch'] if addons_info['branch'] != ['all'] else git_find_all_branches()
-  
+
+  # Always update master
+  #=========================================================================================
+  if HAS_UPDATES and not 'master' in addons_branches: addons_branches.append('master')
+
+  # If we're printing contents, we're finished afterwards.
+  #=========================================================================================
   if opts.list_addons or opts.list_common or opts.list_diff:
     get_addon_manifest(opts.branch, do_common=opts.list_common, do_diff=opts.list_diff)
     sys.exit()
 
   # Process each branch.  
+  #=========================================================================================
   for branch in addons_branches:
+ 
+    # If we dont have updates or deletes to perform, we can skip any further branch iterations
+    #=========================================================================================
+    if not HAS_UPDATES and not HAS_DELETIONS: break
+
     git_checkout(branch)
     
-    # branch specific addon updates directory.
-    addon_depot_branch = os.path.join( addons_info['updates_directory'], branch )
-    
-    # Verify that directory exists
-    assert os.path.exists(addon_depot_branch)
-    
-    print '(%s)\tUsing %s as base.' % (branch, addon_depot_branch)
-   
-    addon_updates = os.listdir(addon_depot_branch)
-
-    # if the addons present in the updates folder
-    # matches the entries in the exclusions we define exactly,
-    # we can safely ignore the directory contents and declare an empty list
-    if not set(addon_updates).difference( set( addons_info['exclusions'] ) ): addon_updates = []
-
-    # Check for specific addons to delete and process them.
+    # Deletes
+    #=========================================================================================
     if HAS_DELETIONS:
       for addon in addons_delete:
         if os.path.exists(os.path.join(addons_info['addons_directory'], addon)):
@@ -204,8 +232,27 @@ def main(opts, args):
         else:
           print '(%s)\t%s NOT found, skipping.' % (branch, addon)
 
-    # If we have updated addons, process them.
+    # Updates
+    #=========================================================================================
     if HAS_UPDATES:
+
+      # branch specific addon updates directory.
+      addon_depot_branch = os.path.join( addons_info['updates_directory'], branch )
+    
+      # Verify that directory exists
+      assert os.path.exists(addon_depot_branch)
+    
+      print '(%s)\tUsing %s as base.' % (branch, addon_depot_branch)
+   
+      addon_updates = os.listdir(addon_depot_branch)
+
+      # if the addons present in the updates folder
+      # matches the entries in the exclusions we define exactly,
+      # we can safely ignore the directory contents and declare an empty list
+      if not set(addon_updates).difference( set( addons_info['exclusions'] ) ): addon_updates = []
+
+      # Check for specific addons to delete and process them.
+
       if opts.verbose: print '(%s)\tUsing the following addons:\n%s' % (branch, '\n'.join(addon_depot_branch))
       
       # TODO: Add actual transaction logic supporting rollback functionality.
@@ -218,6 +265,8 @@ def main(opts, args):
       # Add files
       # Commit
 
+      # The actual addon copies are performed here.
+      #=========================================================================================
       for addon in addon_updates:
         if addon in addons_info['exclusions']: continue
 
@@ -232,43 +281,56 @@ def main(opts, args):
         updated_addon_dst_path = os.path.join(addons_info['addons_directory'], addon)
         
         if opts.verbose: print '(%s)\tCopying %s to %s' % (branch, updated_addon_src_path, updated_addon_dst_path)
+
         shutil.copytree(updated_addon_src_path, updated_addon_dst_path)
         
         git_add()
         git_commit('Updated %s' % addon)
         
-    # Should we push commits to origin
-    if opts.push: 
-      if opts.verbose: print '(%s)\tPushing' % branch
-      git_push()
-  
+    
+      # Clean up updates
+      #=========================================================================================
+      if opts.clean_up and not branch == 'master':
+        print 'Removing (%d) addon folder(s) from %s\n' % (len(addon_updates), addon_depot_branch)
+        for addon in addon_updates:
+          if addon in addons_info['exclusions']: continue
+
+          updated_addon_src_path = os.path.join(addon_depot_branch, addon)
+      
+          if opts.verbose: print 'Deleting %s' % updated_addon_src_path
+      
+          shutil.rmtree(updated_addon_src_path)
+
+
+  # Should we push branches to origin
+  #=========================================================================================
+  if opts.push: 
+    if opts.verbose: print '(%s)\tPushing' % branch
+    git_push()
+
+
   # Should we sync the mirror when finished.
+  #=========================================================================================
   if opts.sync:
     print 'Syncing mirror'
     if opts.verbose: print 'Using mirror: %s' % addons_info['mirror']
     assert os.path.exists(addons_info['mirror'])
     sync_mirror(addons_info['mirror'])
-    
-  # Clean up if required.
-  if opts.clean_up and HAS_UPDATES:
-    print 'Removing (%d) addon folder(s) from %s\n' % (len(addon_updates), addon_depot_branch)
-    for addon in addon_updates:
-      if addon in addons_info['exclusions']: continue
 
-      updated_addon_src_path = os.path.join(addon_depot_branch, addon)
-      
-      if opts.verbose: print 'Deleting %s' % updated_addon_src_path
-      
-      shutil.rmtree(updated_addon_src_path)
-  
+
+# Main
+#=========================================================================================
 if __name__ == '__main__':
 
+  # Command line args functionality
+  #=========================================================================================
   def getOpts():
     '''
     Setup our cmdline variables.
     '''
     _parser = OptionParser(usage = "usage: %prog [options]")
     
+    #=========================================================================================
     _parser.add_option( '--branch',
                         '-b',
                         action='append', 
@@ -277,6 +339,7 @@ if __name__ == '__main__':
                         dest='branch', 
                         help="Branch. Defaults to 'master' if no branch supplied. Use 'all' for global updates *WARNING* BE CAREFUL.")
     
+    #=========================================================================================
     _parser.add_option('--delete',
                         '-d',
                         action='append', 
@@ -285,6 +348,7 @@ if __name__ == '__main__':
                         dest='delete', 
                         help='Delete addon.')
                           
+    #=========================================================================================
     _parser.add_option('--verbose',
                         '-v',
                         action='store_true', 
@@ -292,6 +356,7 @@ if __name__ == '__main__':
                         dest='verbose', 
                         help='Verbose.')
     
+    #=========================================================================================
     _parser.add_option('--update',
                         '-u',
                         action='store_true', 
@@ -299,6 +364,7 @@ if __name__ == '__main__':
                         dest='update', 
                         help='Process addon updates.')
                                             
+    #=========================================================================================
     _parser.add_option('--push',
                         '-p',
                         action='store_true', 
@@ -306,6 +372,7 @@ if __name__ == '__main__':
                         dest='push', 
                         help='Push branch to origin.')
                           
+    #=========================================================================================
     _parser.add_option('--addons-updates-folder',
                        action='store', 
                        type='string',
@@ -313,6 +380,7 @@ if __name__ == '__main__':
                        dest='updates_directory',
                        help='Path to the updated addons folder.')
                       
+    #=========================================================================================
     _parser.add_option('--addons--folder',
                        action='store', 
                        type='string',
@@ -320,6 +388,7 @@ if __name__ == '__main__':
                        dest='addons_directory',
                        help='Path to the addons repo.')
     
+    #=========================================================================================
     _parser.add_option('--config',
                        action='store', 
                        type='string',
@@ -327,6 +396,7 @@ if __name__ == '__main__':
                        dest='config',
                        help='Config file.')
                        
+    #=========================================================================================
     _parser.add_option('--sync-repo',
                         '-s',
                         action='store_true', 
@@ -334,6 +404,7 @@ if __name__ == '__main__':
                         dest='sync', 
                         help='Sync configured mirror repo.')
                         
+    #=========================================================================================
     _parser.add_option('--list-addons',
                         '-l',
                         action='store_true', 
@@ -342,18 +413,21 @@ if __name__ == '__main__':
                         help='List addons for the branch or branches specified. (**NOTE: If no branch is specified, \
                               a complete index across all branches will be generated.')
                         
+    #=========================================================================================
     _parser.add_option('--diff-addons',
                         action='store_true', 
                         default=False, 
                         dest='list_diff', 
                         help='Diff addons between branches. (**NOTE: Must be used with two --branch args)')
                         
+    #=========================================================================================
     _parser.add_option('--common-addons',
                         action='store_true', 
                         default=False, 
                         dest='list_common', 
                         help='List Common addons between branches. (**NOTE: Must be used with two --branch args)')
                         
+    #=========================================================================================
     _parser.add_option('--clean-up',
                         '-c',
                         action='store_true', 

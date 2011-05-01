@@ -41,7 +41,7 @@ def git_commit(msg):
   
 #=========================================================================================
 def git_push():
-  ''' Push changes to the branches origin.'''
+  ''' Push changes to origin.'''
   os.system('git push')
   return True
   
@@ -169,12 +169,13 @@ def main(opts, args):
 
   # Primary data structure
   #=========================================================================================
-  addons_info = { 'branch':            opts.branch if len(opts.branch) > 0 else ['all'],
-                  'addons_to_delete':  opts.delete,
-                  'updates_directory': opts.updates_directory if opts.updates_directory is not None else config.get('local', 'AddonsUpdatesDirectory'),
-                  'addons_directory':  opts.addons_directory if opts.addons_directory is not None else config.get('local', 'AddonsDirectory'),
-                  'mirror':            config.get('local', 'RepoMirror'),
-                  'exclusions':        [] if not config.get('local', 'exclusions') else config.get('local', 'exclusions').split(',')  
+  addons_info = { 'branch':             opts.branch if len(opts.branch) > 0 else ['all'],
+                  'addons_to_delete':   opts.delete,
+                  'updates_directory':  opts.updates_directory if opts.updates_directory is not None else config.get('local', 'AddonsUpdatesDirectory'),
+                  'addons_directory':   opts.addons_directory if opts.addons_directory is not None else config.get('local', 'AddonsDirectory'),
+                  'mirror':             config.get('local', 'RepoMirror'),
+                  'exclusions':         [] if not config.get('local', 'exclusions') else config.get('local', 'exclusions').split(','),
+                  'one_shot_directory': None if not config.get('local', 'oneShotDirectory') else config.get('local', 'oneShotDirectory')  
                 }
   
   # Make sure required directories exist
@@ -224,6 +225,7 @@ def main(opts, args):
     # Deletes
     #=========================================================================================
     if HAS_DELETIONS:
+      print format_section('Removing addons.')
       for addon in addons_delete:
         if os.path.exists(os.path.join(addons_info['addons_directory'], addon)):
           if 'y' in raw_input('(%s)\tDelete << %s >> ?\n(Y or N): ' % (branch, addon)).lower():
@@ -235,14 +237,18 @@ def main(opts, args):
     # Updates
     #=========================================================================================
     if HAS_UPDATES:
-
+      print format_section('Updating addons.')
       # branch specific addon updates directory.
-      addon_depot_branch = os.path.join( addons_info['updates_directory'], branch )
+      if opts.one_shot:
+        if opts.verbose: print '(%s) Using oneshot directory %s' % (branch, addons_info['one_shot_directory'])
+        addon_depot_branch = addons_info['one_shot_directory']
+      else:
+        addon_depot_branch = os.path.join( addons_info['updates_directory'], branch )
     
       # Verify that directory exists
       assert os.path.exists(addon_depot_branch)
     
-      print '(%s)\tUsing %s as base.' % (branch, addon_depot_branch)
+      print '(%s) Using base:\n\t\t%s' % (branch, addon_depot_branch)
    
       addon_updates = os.listdir(addon_depot_branch)
 
@@ -253,7 +259,7 @@ def main(opts, args):
 
       # Check for specific addons to delete and process them.
 
-      if opts.verbose: print '(%s)\tUsing the following addons:\n%s' % (branch, '\n'.join(addon_depot_branch))
+      if opts.verbose: print '(%s) Using the following addons:\n\t\t%s' % (branch, '\n'.join(os.listdir(addon_depot_branch)))
       
       # TODO: Add actual transaction logic supporting rollback functionality.
       
@@ -270,17 +276,17 @@ def main(opts, args):
       for addon in addon_updates:
         if addon in addons_info['exclusions']: continue
 
-        print '(%s)\tProcessing %s' % (branch, addon)
+        print '(%s) Processing %s' % (branch, addon)
         
         if os.path.exists(os.path.join(addons_info['addons_directory'], addon)):
-          if opts.verbose: print '(%s)\tRemoving %s for update' % (branch, addon)
+          if opts.verbose: print '\n\t\tRemoving %s for update\n' % (addon)
           git_remove(addon)
-          git_commit('removed %s for update' % addon)
+          git_commit('Removed %s to update' % addon)
         
         updated_addon_src_path = os.path.join( addon_depot_branch, addon )
         updated_addon_dst_path = os.path.join(addons_info['addons_directory'], addon)
         
-        if opts.verbose: print '(%s)\tCopying %s to %s' % (branch, updated_addon_src_path, updated_addon_dst_path)
+        if opts.verbose: print '\nCopying %s -> %s\n' % (updated_addon_src_path, updated_addon_dst_path)
 
         shutil.copytree(updated_addon_src_path, updated_addon_dst_path)
         
@@ -288,31 +294,51 @@ def main(opts, args):
         git_commit('Updated %s' % addon)
         
     
-      # Clean up updates
-      #=========================================================================================
-      if opts.clean_up and not branch == 'master':
-        print 'Removing (%d) addon folder(s) from %s\n' % (len(addon_updates), addon_depot_branch)
-        for addon in addon_updates:
-          if addon in addons_info['exclusions']: continue
+  # Clean up updates
+  #=========================================================================================
+  print format_section('Cleaning up addons.')
 
-          updated_addon_src_path = os.path.join(addon_depot_branch, addon)
+  # TODO: hackish. Implement properly
+  if opts.one_shot: addons_branches = ['one_shot']
+  
+  for b in addons_branches:
+    if opts.clean_up and branch == 'master': continue
+    
+    if opts.one_shot:
+      addon_updates_branch = addons_info['one_shot_directory']
+    else:
+      addon_updates_branch = os.path.join( addons_info['updates_directory'], b )
+    
+    if opts.verbose: print '(%s) Using oneshot directory %s' % (b, addon_updates_branch)
+    
+    addon_updates_list = os.listdir(addon_updates_branch)
+    
+    print '\n\t\tRemoving (%d) addon folder(s) from %s\n' % (len(addon_updates_list), addon_updates_branch)
+    
+    for addon in addon_updates_list:
+      if addon in addons_info['exclusions']: continue
+
+      updated_addon_src_path = os.path.join(addon_updates_branch, addon)
       
-          if opts.verbose: print 'Deleting %s' % updated_addon_src_path
+      if opts.verbose: print '\t\t\tDeleting %s' % (addon)
       
-          shutil.rmtree(updated_addon_src_path)
+      shutil.rmtree(updated_addon_src_path)
+    
+    # if one-shot we're since theres no more branch directories to iterate through.
+    if opts.one_shot: break
 
 
-  # Should we push branches to origin
+  # Should we push changes.
   #=========================================================================================
   if opts.push: 
-    if opts.verbose: print '(%s)\tPushing' % branch
+    print format_section('Pushing updates.')
     git_push()
 
 
   # Should we sync the mirror when finished.
   #=========================================================================================
   if opts.sync:
-    print 'Syncing mirror'
+    print format_section('Syncing mirror.')
     if opts.verbose: print 'Using mirror: %s' % addons_info['mirror']
     assert os.path.exists(addons_info['mirror'])
     sync_mirror(addons_info['mirror'])
@@ -405,6 +431,13 @@ if __name__ == '__main__':
                         help='Sync configured mirror repo.')
                         
     #=========================================================================================
+    _parser.add_option('--one-shot',
+                        action='store_true', 
+                        default=False, 
+                        dest='one_shot', 
+                        help='One off update.')
+                        
+    #=========================================================================================
     _parser.add_option('--list-addons',
                         '-l',
                         action='store_true', 
@@ -439,6 +472,8 @@ if __name__ == '__main__':
     return _opts, _args
 
   opts, args = getOpts()
+
+  print format_section('Addongit repo tool\tv2.0')
 
   try:
     main(opts, args)

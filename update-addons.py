@@ -296,36 +296,37 @@ def main(opts, args):
     
   # Clean up updates
   #=========================================================================================
-  print format_section('Cleaning up addons.')
-
-  # TODO: hackish. Implement properly
-  if opts.one_shot: addons_branches = ['one_shot']
+  if opts.clean_up:
+    print format_section('Cleaning up addons.')
   
-  for b in addons_branches:
-    if opts.clean_up and branch == 'master': continue
+    # TODO: hackish. Implement properly
+    if opts.one_shot: addons_branches = ['one_shot']
+  
+    for b in addons_branches:
+      if b == 'master': continue
     
-    if opts.one_shot:
-      addon_updates_branch = addons_info['one_shot_directory']
-    else:
-      addon_updates_branch = os.path.join( addons_info['updates_directory'], b )
+      if opts.one_shot:
+        addon_updates_branch = addons_info['one_shot_directory']
+      else:
+        addon_updates_branch = os.path.join( addons_info['updates_directory'], b )
     
-    if opts.verbose: print '(%s) Using oneshot directory %s' % (b, addon_updates_branch)
+      if opts.verbose: print '(%s) Using oneshot directory %s' % (b, addon_updates_branch)
     
-    addon_updates_list = os.listdir(addon_updates_branch)
+      addon_updates_list = os.listdir(addon_updates_branch)
     
-    print '\n\t\tRemoving (%d) addon folder(s) from %s\n' % (len(addon_updates_list), addon_updates_branch)
+      print '\n\t\tRemoving (%d) addon folder(s) from %s\n' % (len(addon_updates_list), addon_updates_branch)
     
-    for addon in addon_updates_list:
-      if addon in addons_info['exclusions']: continue
+      for addon in addon_updates_list:
+        if addon in addons_info['exclusions']: continue
 
-      updated_addon_src_path = os.path.join(addon_updates_branch, addon)
+        updated_addon_src_path = os.path.join(addon_updates_branch, addon)
       
-      if opts.verbose: print '\t\t\tDeleting %s' % (addon)
+        if opts.verbose: print '\t\t\tDeleting %s' % (addon)
       
-      shutil.rmtree(updated_addon_src_path)
+        shutil.rmtree(updated_addon_src_path)
     
-    # if one-shot we're since theres no more branch directories to iterate through.
-    if opts.one_shot: break
+      # if one-shot we're since theres no more branch directories to iterate through.
+      if opts.one_shot: break
 
 
   # Should we push changes.

@@ -22,42 +22,60 @@ def initConfig(config):
 
 # GIT functionality
 #=========================================================================================
-def git_remove(addon):
+def git_remove(addon, verbose=False):
   '''Remove $addon from the repository.'''
-  os.system('git rm -r %s' % addon)
+  cmd_git_rm = 'git rm -r'
+  if not verbose: cmd_git_rm += ' -q'
+  cmd_git_rm += ' %s' % addon
+  os.system(cmd_git_rm)
   return True
   
 #=========================================================================================
-def git_add():
+def git_add(verbose=False):
   ''' Run git add to record changes.'''
-  os.system('git add .')
+  cmd_git_add = 'git add'
+  if verbose: cmd_git_add += ' -v'
+  cmd_git_add += ' .'
+  os.system(cmd_git_add)
   return True
   
 #=========================================================================================
-def git_commit(msg):
+def git_commit(msg, verbose=False):
   ''' Commit changes recording $msg.'''
-  os.system("git commit -a -s -m '%s'" % msg)
+  cmd_git_commit = 'git commit'
+  if verbose: cmd_git_commit += ' -v'
+  else: cmd_git_commit += ' -q'
+  cmd_git_commit += " -a -s -m '%s'" % msg
+  os.system(cmd_git_commit)
   return True
   
 #=========================================================================================
-def git_push():
+def git_push(verbose=False):
   ''' Push changes to origin.'''
-  os.system('git push')
+  cmd_git_push = 'git push --progress'
+  if verbose: cmd_git_push += ' -v'
+  os.system(cmd_git_push)
   return True
   
 #=========================================================================================
-def git_checkout(branch):
+def git_checkout(branch, verbose=False):
   ''' Checkout $branch.'''
-  os.system('git checkout %s' % branch)
+  cmd_git_co = 'git checkout'
+  if not verbose: cmd_git_co += ' -q'
+  cmd_git_co += ' %s' % branch
+  os.system(cmd_git_co)
   return True
   
 #=========================================================================================
-def sync_mirror(repo):
+def sync_mirror(repo, verbose=False):
   ''' Syncs $repo against origin repo.
       In my case, $repo is a local mirror.'''
   cur_dir = os.getcwd()
   os.chdir(repo)
-  os.system('git remote -v update')
+  cmd_git_remote = 'git remote'
+  if verbose: cmd_git_remote += ' -v'
+  cmd_git_remote += ' update'
+  os.system(cmd_git_remote)
   os.chdir(cur_dir)
   return True
   
@@ -229,8 +247,8 @@ def main(opts, args):
       for addon in addons_delete:
         if os.path.exists(os.path.join(addons_info['addons_directory'], addon)):
           if 'y' in raw_input('(%s)\tDelete << %s >> ?\n(Y or N): ' % (branch, addon)).lower():
-            git_remove(addon)
-            git_commit('Removed %s.' % addon)
+            git_remove(addon, opts.verbose)
+            git_commit('Removed %s.' % addon, opts.verbose)
         else:
           print '(%s)\t%s NOT found, skipping.' % (branch, addon)
 
@@ -280,8 +298,8 @@ def main(opts, args):
         
         if os.path.exists(os.path.join(addons_info['addons_directory'], addon)):
           if opts.verbose: print '\n\t\tRemoving %s for update\n' % (addon)
-          git_remove(addon)
-          git_commit('Removed %s to update' % addon)
+          git_remove(addon, opts.verbose)
+          git_commit('Removed %s to update' % addon, opts.verbose)
         
         updated_addon_src_path = os.path.join( addon_depot_branch, addon )
         updated_addon_dst_path = os.path.join(addons_info['addons_directory'], addon)
@@ -290,8 +308,8 @@ def main(opts, args):
 
         shutil.copytree(updated_addon_src_path, updated_addon_dst_path)
         
-        git_add()
-        git_commit('Updated %s' % addon)
+        git_add(opts.verbose)
+        git_commit('Updated %s' % addon, opts.verbose)
         
     
   # Clean up updates
@@ -333,7 +351,7 @@ def main(opts, args):
   #=========================================================================================
   if opts.push: 
     print format_section('Pushing updates.')
-    git_push()
+    git_push(opts.verbose)
 
 
   # Should we sync the mirror when finished.
@@ -342,7 +360,7 @@ def main(opts, args):
     print format_section('Syncing mirror.')
     if opts.verbose: print 'Using mirror: %s' % addons_info['mirror']
     assert os.path.exists(addons_info['mirror'])
-    sync_mirror(addons_info['mirror'])
+    sync_mirror(addons_info['mirror'], opts.verbose)
 
 
 # Main
@@ -480,8 +498,8 @@ if __name__ == '__main__':
     main(opts, args)
   except KeyboardInterrupt, e:
     print >> sys.stderr, '\n\nExiting.'
-  except Exception, e:
-    print str('ERROR: %s' % e)
-  sys.exit('Finished.\n')
+  #except Exception, e:
+  #  print str('ERROR: %s' % e)
+  #sys.exit('Finished.\n')
 
   
